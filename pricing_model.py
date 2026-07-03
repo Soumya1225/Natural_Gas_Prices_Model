@@ -1,14 +1,19 @@
 import pandas as pd
 from scipy.interpolate import interp1d
 
-# Load CSV
+# Load historical gas prices
 df = pd.read_csv("data/gas_prices.csv")
 
-df["Date"] = pd.to_datetime(df["Date"])
-df = df.sort_values("Date")
+# Convert dates
+df["Dates"] = pd.to_datetime(df["Dates"])
 
-df["Days"] = (df["Date"] - df["Date"].min()).dt.days
+# Sort data
+df = df.sort_values("Dates")
 
+# Convert dates into numeric values
+df["Days"] = (df["Dates"] - df["Dates"].min()).dt.days
+
+# Create interpolation model
 price_function = interp1d(
     df["Days"],
     df["Prices"],
@@ -16,38 +21,48 @@ price_function = interp1d(
     fill_value="extrapolate"
 )
 
-
+# Estimate gas price for any date
 def get_price(date):
-
     date = pd.to_datetime(date)
-
-    days = (date - df["Date"].min()).days
-
+    days = (date - df["Dates"].min()).days
     return float(price_function(days))
 
 
+# Price storage contract
 def price_contract(
-        injection_date,
-        withdrawal_date,
-        volume,
-        storage_cost_per_day):
+    injection_date,
+    withdrawal_date,
+    volume,
+    injection_rate,
+    withdrawal_rate,
+    max_volume,
+    storage_cost_per_day
+):
 
+    # Respect storage capacity
+    stored_volume = min(volume, max_volume)
+
+    # Injection/withdrawal rates (simplified)
+    injected_volume = min(stored_volume, injection_rate)
+    withdrawn_volume = min(injected_volume, withdrawal_rate)
+
+    # Market prices
     buy_price = get_price(injection_date)
-
     sell_price = get_price(withdrawal_date)
 
+    # Storage duration
     storage_days = (
         pd.to_datetime(withdrawal_date)
-        -
-        pd.to_datetime(injection_date)
+        - pd.to_datetime(injection_date)
     ).days
 
+    # Storage cost
     storage_cost = storage_days * storage_cost_per_day
 
-    value = (
-        (sell_price - buy_price)
-        * volume
+    # Contract value
+    contract_value = (
+        (sell_price - buy_price) * withdrawn_volume
         - storage_cost
     )
 
-    return round(value,2)
+    return round(contract_value, 2)
